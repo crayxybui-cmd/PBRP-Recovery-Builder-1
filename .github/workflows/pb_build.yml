@@ -42,12 +42,20 @@ jobs:
         cd pbrp
         source build/envsetup.sh
         lunch omni_a71-eng
-        mka recoveryimage -j$(nproc --all)
+        mka recoveryimage -j$(nproc --all) || mka bootimage -j$(nproc --all)
 
-    - name: Derleme Çıktılarını Sıkıştır
+    - name: Derleme Çıktılarını Doğrula ve Sıkıştır
       run: |
         cd pbrp/out/target/product/a71/
-        zip -r pbrp_a71_build.zip recovery.img
+        ls -la
+        if [ -f "recovery.img" ]; then
+          zip -r pbrp_a71_build.zip recovery.img
+        elif [ -f "boot.img" ]; then
+          zip -r pbrp_a71_build.zip boot.img
+        else
+          echo "HATA: Ne recovery.img ne de boot.img üretilebildi!"
+          exit 1
+        fi
 
     - name: Release Olarak Yayımla
       uses: softprops/action-gh-release@v2
