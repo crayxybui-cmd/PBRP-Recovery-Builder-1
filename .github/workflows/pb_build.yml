@@ -42,43 +42,40 @@ jobs:
         cd pbrp
         source build/envsetup.sh
         lunch omni_a71-eng
-        # PBRP'nin dahili Python/Shell derleme betiğini çalıştır
         if [ -f "vendor/pb/tools/build.py" ]; then
           python3 vendor/pb/tools/build.py a71 -p
         elif [ -f "vendor/pb/tools/build.sh" ]; then
           bash vendor/pb/tools/build.sh a71
         else
           mka pbrp -j$(nproc --all) || mka recoveryimage -j$(nproc --all)
-        fi 2>&1 | tee build.log || true
+        fi
 
-    - name: Derleme Çıktılarını Doğrula ve Sıkıştır
+    - name: Derleme Çıktılarını Pakatle
       run: |
-        cd pbrp
-        echo "=== Üretilen PBRP Dosyaları ==="
-        find out/target/product/a71/ -name "PBRP*.zip" -o -name "recovery.img" || true
+        cd pbrp/out/target/product/a71/
+        echo "=== Üretilen Tüm Dosyalar ==="
+        ls -lh
         
-        # PBRP'nin kendi oluşturduğu installer zip'i veya recovery.img'yi bul ve paketle
-        ZIP_FILE=$(find out/target/product/a71/ -name "PBRP*.zip" | head -n 1)
-        IMG_FILE=$(find out/target/product/a71/ -name "recovery.img" | head -n 1)
-        
-        if [ -n "$ZIP_FILE" ]; then
-          cp "$ZIP_FILE" out/target/product/a71/pbrp_a71_build.zip
-        elif [ -n "$IMG_FILE" ]; then
-          cd out/target/product/a71/
-          zip -r pbrp_a71_build.zip recovery.img
+        # PBRP Zip veya img dosyalarını zip içine ekle
+        mkdir -p ~/output/
+        if ls PBRP*.zip 1> /dev/null 2>&1; then
+          cp PBRP*.zip ~/output/pbrp_a71_build.zip
+        elif [ -f "recovery.img" ]; then
+          zip -r ~/output/pbrp_a71_build.zip recovery.img
+        elif [ -f "boot.img" ]; then
+          zip -r ~/output/pbrp_a71_build.zip boot.img
         else
-          echo "=== Derleme Log Özeti ==="
-          tail -n 100 build.log
-          exit 1
+          echo "Bütün imaj dosyaları taranıyor..."
+          zip -r ~/output/pbrp_a71_build.zip *.img
         fi
 
     - name: Release Olarak Yayımla
       uses: softprops/action-gh-release@v2
       with:
-        files: pbrp/out/target/product/a71/pbrp_a71_build.zip
+        files: /home/runner/output/pbrp_a71_build.zip
         tag_name: v1.0-a71
         name: PBRP Unofficial Build - Samsung Galaxy A71
         body: |
-          Samsung Galaxy A71 için PBRP betiği kullanılarak GitHub Actions üzerinden otomatik derlenen imaj.
+          Samsung Galaxy A71 (omni_a71) için otomatik derlenen PBRP recovery paketi.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
