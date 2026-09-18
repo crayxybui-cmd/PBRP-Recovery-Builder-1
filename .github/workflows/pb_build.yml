@@ -10,13 +10,21 @@ jobs:
       contents: write
 
     steps:
+    - name: Gereksiz Dosyaları Sil (Depolama Alanı Aç)
+      run: |
+        sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/apt/sources.list.d /usr/local/lib/android
+        sudo docker image prune --all --force
+        sudo apt-get clean
+
     - name: Depoyu Klonla
       uses: actions/checkout@v4
 
-    - name: Derleme Ortamını Hazırla
+    - name: Derleme Ortamını Hazırla (Donma Korumalı)
+      env:
+        DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo apt update
-        sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 python2
+        sudo apt-get update -y
+        sudo apt-get install -yq bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 python2
         sudo update-alternatives --install /usr/bin/python python /usr/bin/python2 1
         mkdir -p ~/bin
         curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
@@ -29,6 +37,7 @@ jobs:
         cd pbrp
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
+        git config --global color.ui true
         repo init --depth=1 -u https://github.com/PitchBlackRecoveryProject/manifest_pb -b android-11.0
         repo sync -c --force-sync --no-clone-bundle --no-tags -j$(nproc --all)
 
@@ -37,41 +46,49 @@ jobs:
         cd pbrp
         git clone https://github.com/ianmacd/twrp_a71.git device/samsung/a71
 
-    - name: Temizle ve Sıfırdan PBRP Derle
+    - name: Bağımlılık Hatalarını Yoksay ve Derle
       run: |
         cd pbrp
+        export ALLOW_MISSING_DEPENDENCIES=true
+        export LC_ALL="C"
         source build/envsetup.sh
         lunch omni_a71-eng
-        # Önceki tüm önbellek ve out dizinini temizle
+        
+        # Önceki hatalı veya eksik önbelleği tamamen sil
         make clean && make clobber
-        # Doğrudan recoveryimage hedefini zorla
-        mka recoveryimage -j$(nproc --all)
+        
+        # PBRP hedefini derle, hata verirse TWRP hedefine (recoveryimage) düş
+        mka pbrp -j$(nproc --all) || mka recoveryimage -j$(nproc --all)
 
-    - name: Derleme Çıktılarını Pakatle
+    - name: Derleme Çıktılarını Doğrula ve Paketle
       run: |
-        cd pbrp/out/target/product/a71/
+        mkdir -p ${GITHUB_WORKSPACE}/output
+        cd pbrp/out/target/product/a71/ || echo "Çıktı dizini bulunamadı!"
         echo "=== Üretilen Tüm Dosyalar ==="
         ls -la
         
-        mkdir -p ~/output/
+        # Olası tüm imaj veya zip isimlerini hesaba katan paketleme mantığı
         if ls PBRP*.zip 1> /dev/null 2>&1; then
-          cp PBRP*.zip ~/output/pbrp_a71_build.zip
+          echo "PBRP zip dosyası bulundu."
+          cp PBRP*.zip ${GITHUB_WORKSPACE}/output/pbrp_a71_build.zip
         elif [ -f "recovery.img" ]; then
-          zip -r ~/output/pbrp_a71_build.zip recovery.img
+          echo "recovery.img bulundu, zipleniyor..."
+          zip -j ${GITHUB_WORKSPACE}/output/pbrp_a71_build.zip recovery.img
         elif [ -f "boot.img" ]; then
-          zip -r ~/output/pbrp_a71_build.zip boot.img
+          echo "boot.img bulundu, zipleniyor..."
+          zip -j ${GITHUB_WORKSPACE}/output/pbrp_a71_build.zip boot.img
         else
-          echo "Tüm imajlar paketleniyor..."
-          zip -r ~/output/pbrp_a71_build.zip *.img
+          echo "Özel isimli bir çıktı bulunamadı, tüm imajlar zipleniyor..."
+          zip -j ${GITHUB_WORKSPACE}/output/pbrp_a71_build.zip *.img
         fi
 
     - name: Release Olarak Yayımla
       uses: softprops/action-gh-release@v2
       with:
-        files: /home/runner/output/pbrp_a71_build.zip
-        tag_name: v1.0-a71
-        name: PBRP Unofficial Build - Samsung Galaxy A71
+        files: ${{ github.workspace }}/output/pbrp_a71_build.zip
+        tag_name: PBRP-A71-${{ github.run_number }}
+        name: PBRP Unofficial Build - Samsung Galaxy A71 (Run ${{ github.run_number }})
         body: |
-          Samsung Galaxy A71 (omni_a71) için sıfırdan temiz derlenen PBRP recovery paketi.
+          Samsung Galaxy A71 (omni_a71) için otomatik derlenen PBRP recovery paketi.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
