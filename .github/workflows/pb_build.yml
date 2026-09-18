@@ -37,26 +37,22 @@ jobs:
         cd pbrp
         git clone https://github.com/ianmacd/twrp_a71.git device/samsung/a71
 
-    - name: PBRP Betiği ile Derle
+    - name: Temizle ve Sıfırdan PBRP Derle
       run: |
         cd pbrp
         source build/envsetup.sh
         lunch omni_a71-eng
-        if [ -f "vendor/pb/tools/build.py" ]; then
-          python3 vendor/pb/tools/build.py a71 -p
-        elif [ -f "vendor/pb/tools/build.sh" ]; then
-          bash vendor/pb/tools/build.sh a71
-        else
-          mka pbrp -j$(nproc --all) || mka recoveryimage -j$(nproc --all)
-        fi
+        # Önceki tüm önbellek ve out dizinini temizle
+        make clean && make clobber
+        # Doğrudan recoveryimage hedefini zorla
+        mka recoveryimage -j$(nproc --all)
 
     - name: Derleme Çıktılarını Pakatle
       run: |
         cd pbrp/out/target/product/a71/
         echo "=== Üretilen Tüm Dosyalar ==="
-        ls -lh
+        ls -la
         
-        # PBRP Zip veya img dosyalarını zip içine ekle
         mkdir -p ~/output/
         if ls PBRP*.zip 1> /dev/null 2>&1; then
           cp PBRP*.zip ~/output/pbrp_a71_build.zip
@@ -65,7 +61,7 @@ jobs:
         elif [ -f "boot.img" ]; then
           zip -r ~/output/pbrp_a71_build.zip boot.img
         else
-          echo "Bütün imaj dosyaları taranıyor..."
+          echo "Tüm imajlar paketleniyor..."
           zip -r ~/output/pbrp_a71_build.zip *.img
         fi
 
@@ -76,6 +72,6 @@ jobs:
         tag_name: v1.0-a71
         name: PBRP Unofficial Build - Samsung Galaxy A71
         body: |
-          Samsung Galaxy A71 (omni_a71) için otomatik derlenen PBRP recovery paketi.
+          Samsung Galaxy A71 (omni_a71) için sıfırdan temiz derlenen PBRP recovery paketi.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
