@@ -1,0 +1,60 @@
+name: PBRP Recovery Build for Samsung A71
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+    - name: Depoyu Klonla
+      uses: actions/checkout@v3
+
+    - name: Derleme Ortamını Hazırla
+      run: |
+        sudo apt update
+        sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf image-zip lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: PBRP Kaynak Kodlarını Çek
+      run: |
+        mkdir pbrp
+        cd pbrp
+        git config --global user.name "GitHub Actions"
+        git config --global user.email "actions@github.com"
+        repo init --depth=1 -u https://github.com/PitchBlackRecoveryProject/manifest_pb -b android-11.0
+        repo sync -c --force-sync --no-clone-bundle --no-tags -j$(nproc --all)
+
+    - name: A71 Cihaz Ağacını Ekle
+      run: |
+        cd pbrp
+        git clone https://github.com/ianmacd/twrp_a71.git device/samsung/a71
+
+    - name: PBRP Recovery Derle
+      run: |
+        cd pbrp
+        source build/envsetup.sh
+        lunch omni_a71-eng
+        mka recoveryimage -j$(nproc --all)
+
+    - name: Derleme Çıktılarını Sıkıştır
+      run: |
+        cd pbrp/out/target/product/a71/
+        zip -r pbrp_a71_build.zip recovery.img
+
+    - name: Release Olarak Yayımla
+      uses: softprops/action-gh-release@v1
+      with:
+        files: pbrp/out/target/product/a71/pbrp_a71_build.zip
+        tag_name: v1.0-a71
+        name: PBRP Unofficial Build - Samsung Galaxy A71
+        body: |
+          Samsung Galaxy A71 için GitHub Actions üzerinden otomatik derlenen PBRP imajı.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
